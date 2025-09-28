@@ -1,0 +1,12 @@
+.natural-quantization
+*egg*
+*__pycache__
+*.pytest*
+*.qnn
+*out
+*err
+build
+data/zaratan/*
+check_copy.sh
+check_structure.sh
+data/*
