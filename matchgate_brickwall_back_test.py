@@ -401,4 +401,107 @@ _Z = np.array([[1,  0],
 
 prob_plus = Brute_Force(density_matrix,num_qubits,measurement_sites_list[0],chi_plus,measurement_results)
 prob_minus = Brute_Force(density_matrix,num_qubits,measurement_sites_list[0],chi_minus,measurement_results)
+
 print("finite difference all 6 matchgates: ", 2*(prob_plus-prob_minus)/(2*epsilon))
+
+def Brick_Wall_Brute_Force(initial_density_matrix,num_hidden_layers,num_qubits,measurement_sites_list, chi_list_tensor, measurement_results_tensor):
+  density_matrix = initial_density_matrix
+  #measurement_results = [np.zeros(len(measurement_sites_list[n])) for n in range(len(measurement_sites_list))]
+  chi_list = [chi_list_tensor[n].numpy() for n in range(len(chi_list_tensor))]
+  #measurement_sites_list = [measurement_sites_list_tensor[n] for n in range(len(measurement_sites_list_tensor))]
+  measurement_results  = [measurement_results_tensor[n].numpy().astype(np.float64) for n in range(len(measurement_results_tensor))]
+  Id =np.eye(2**num_qubits)
+  for l in range(num_hidden_layers):
+    U = np.eye(2**num_qubits)
+    #Unitary update
+    if l % 2 ==0:
+      num_gates = num_qubits//2
+      start = 0
+      end = num_qubits-1
+      is_odd = True
+    else:
+      num_gates = num_qubits//2-1
+      start = 1
+      end = num_qubits -2
+      is_odd = False
+    for k in range(start,end,2):
+      if is_odd:
+        i = k//2
+      else:
+        i = (k-1)//2
+      H = chi_list[l][i,0]*X(k,num_qubits) @ X(k+1,num_qubits) +chi_list[l][i,1]*X(k,num_qubits) @ Y(k+1,num_qubits) +chi_list[l][i,2]*Y(k,num_qubits) @ X(k+1,num_qubits)
+      H+= chi_list[l][i,3]*Y(k,num_qubits) @ Y(k+1,num_qubits) +chi_list[l][i,4]*Z(k,num_qubits) @ Id +chi_list[l][i,5]*Id @ Z(k+1,num_qubits)
+      U = expm(-1j*H) @ U
+    density_matrix = U @ density_matrix @ U.conj().T
+    index = 0
+    for k in measurement_sites_list[l]:
+      p_up= np.clip(np.trace(density_matrix @ P(k,num_qubits,1)).real,0,1)
+      if k == measurement_sites_list[-1][0] and l ==num_hidden_layers-1:
+        p_out = p_up
+      s = measurement_results[l][index]
+      #s = 2*np.random.binomial(1, p_up, size=1)-1
+      density_matrix = P(k,num_qubits,s) @ density_matrix @ P(k,num_qubits,s)/(np.trace(density_matrix @ P(k,num_qubits,s)))
+      measurement_results[l][index] = np.asarray(s).real.item()
+      index+=1
+  return p_out
+
+""" Simlar to previous, but differentiating with respect to an angle belonging to a gate at the end of a brick wall """
+
+#define chi for one layer 
+chi_list = [2*torch.pi*torch.rand(num_qubits//2-layer_index % 2,6) for layer_index in range(num_hidden_layers)]
+#Forward prop to get new covariance matrix and measurement_results
+cov_back =[]
+meas_list = []
+R_list = []
+covariance_matrix = initial_covariance_matrix
+for layer_index in range(num_hidden_layers):
+    covariance_matrices, update_matrix, measurement_results = Brick_Wall_Layer_Forward(covariance_matrix,chi_list[layer_index], measurement_sites_list[layer_index],layer_index)
+    cov_back.append(covariance_matrices[0,:,:])
+    covariance_matrix = covariance_matrices[1,:,:]
+    meas_list.append(measurement_results)
+    R_list.append(update_matrix)
+    #print(covariance_matrix + covariance_matrix.t())
+    #print(cov_back[layer_index] + cov_back[layer_index].t())
+
+
+#calculate derivative of 1st qubit probability using backprop
+initial_partial_cost_partial_activation = torch.zeros(2*num_qubits)
+k = measurement_sites_list[-1][0]
+initial_partial_cost_partial_activation[k] = 1.0
+#randomly choose an angle and gate to differetiate with respect to
+if num_hidden_layers % 2 ==0:
+  gate_index = torch.randint(0,num_qubits//2+1,(1,))
+else:
+  gate_index = torch.randint(0,num_qubits//2-1+1,(1,))
+#delete this initialization of gate_idex later
+basis_index = torch.randint(0,6,(1,))
+
+
+partial_cost_partial_chi = Brick_Wall_Layer_Back(initial_partial_cost_partial_activation,cov_back[-1], R_list[-1],chi_list[-1], measurement_sites_list[-1],meas_list[-1],num_hidden_layers-1)
+print("backprop code all 6 matchgates, multiple layers: ", partial_cost_partial_chi[basis_index][gate_index])
+
+
+
+#Now I will do finite difference. I will use brute force code since the forward code is not double precision, double precision desired for finite difference
+chi_plus = [chi_i.clone().detach() for chi_i in chi_list]
+chi_minus = [chi_i.clone().detach() for chi_i in chi_list]
+epsilon = 10**(-3)
+chi_plus[-1][gate_index,basis_index] += epsilon
+chi_minus[-1][gate_index,basis_index] -= epsilon
+
+
+#zero state density matrix
+density_matrix = np.zeros((2**num_qubits,2**num_qubits),dtype = complex)
+density_matrix[0,0] = 1.0
+# Single-qubit Paulis (complex dtype to cover Y)
+_I = np.eye(2, dtype=complex)
+_X = np.array([[0, 1],
+               [1, 0]], dtype=complex)
+_Y = np.array([[0, -1j],
+               [1j,  0]], dtype=complex)
+_Z = np.array([[1,  0],
+               [0, -1]], dtype=complex)
+
+prob_plus = Brick_Wall_Brute_Force(density_matrix,num_hidden_layers,num_qubits, measurement_sites_list,chi_plus,meas_list)
+prob_minus = Brick_Wall_Brute_Force(density_matrix,num_hidden_layers, num_qubits, measurement_sites_list,chi_minus,meas_list)
+print("finite difference all 6 matchgates,multiple layers: ", 2*(prob_plus-prob_minus)/(2*epsilon))
