@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "natural_quantization"
-description = "natural-quantization in qiskit for quantum computer"
+name = "brick_wall_net"
+description = "code for brick-wall neural network"
 authors = [ {name="Djamil Lakhdar-Hamina", email = "dlakhdar@umd.edu"} ,
-            {name="Richard Barney", email="rbarney@umd.edu"}]
+            {name="Paul Argyle", email="pargyle@umd.edu"}]
 
 version = "0.0.0"
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
-    "Programming Language :: Pythosn",
+    "Programming Language :: Python",
     "Topic :: Utilities",
 ]
 
@@ -25,12 +25,8 @@ dependencies = [
     "ipykernel",
     "matplotlib",
     "numpy",
-    "numba",
-    "qiskit",
-    "qiskit-ibm-runtime",
-    "qiskit-ibm-transpiler",
-    "qiskit[visualization]",
-    "qiskit-aer"
+    "torch",
+    "torchvision"
 ]
 
 [project.license]
@@ -49,6 +45,7 @@ dev = [
     "python-semantic-release",
     "twine",
     "yapf",
+    "tqdm"
 ]
 test = [
     "pytest",
@@ -63,8 +60,15 @@ test = [
 file = "README.md"
 content-type = "text/markdown"
 
-#[project.scripts]
-#natural_quantization = "natural_quantization.__main__:main"
+# Command-line entry point
+[project.scripts]
+brick_wall_net = "brick_wall_net.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}  # maps top-level to src/
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.isort]
 profile = "black"
@@ -134,5 +138,3 @@ env = "GH_TOKEN"
 dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
-[tool.setuptools.package-dir]
-""="src"
